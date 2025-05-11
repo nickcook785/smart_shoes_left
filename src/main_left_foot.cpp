@@ -101,7 +101,7 @@ void setup() {
     } else {
         Serial.println("✅ MPU6050 초기화 완료!");
     }
-    BLEDevice::init("ESP32-S3 BLE Shoe");
+    BLEDevice::init("ESP32-S3 BLE Shoe left");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
 
