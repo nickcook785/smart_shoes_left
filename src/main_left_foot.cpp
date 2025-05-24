@@ -84,10 +84,20 @@ String evaluateSquat(float* norm) {
         return "UNCLEAR";
     }
 }
+class WriteCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pCharacteristic) override {
+        std::string value = pCharacteristic->getValue();
+        if (value == "reset") {
+            yawAngle = 0.0;
+            Serial.println("🌀 yawAngle 수동 초기화됨 (reset 명령)");
+        }
+    }
+};
 
 void setup() {
     Serial.begin(115200);
     delay(2000);
+    
 
     setupFSRPins();
 
@@ -107,11 +117,13 @@ void setup() {
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
     pCharacteristic->setValue("FSR Init");
-
+    
     pWriteCharacteristic = pService->createCharacteristic(
         WRITE_CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_WRITE
     );
+    pWriteCharacteristic->setCallbacks(new WriteCallbacks());
+
     pService->start();
 
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
@@ -120,10 +132,13 @@ void setup() {
     pAdvertising->setMinPreferred(0x06);
     pAdvertising->setMinPreferred(0x12);
 
+    
+
     BLEDevice::startAdvertising();
     Serial.println("📡 BLE 서버 광고 시작");
 
     prevTime = millis();
+
 }
 
 void loop() {
@@ -139,8 +154,8 @@ void loop() {
         fsrValues[3] = analogRead(FSR4_PIN);
         fsrValues[4] = analogRead(FSR5_PIN);
 
-        float mu = 1500.0;
-        float sigma = 700.0;
+        float mu = 2500.0;
+        float sigma = 800.0;
 
         float sumNormalized = 0.0;
         for (int i = 0; i < NUM_FSR; i++) {
@@ -164,20 +179,17 @@ void loop() {
         yawAngle += yawRate * dt;
         prevTime = now;
 
-        // 랩핑 처리 (각도를 -180 ~ 180 사이로 유지)
+        // 랩핑 처리 각도를 -180 ~ 180 사이로 유지
         if (yawAngle > 180.0) yawAngle -= 360.0;
         else if (yawAngle < -180.0) yawAngle += 360.0;
-        // 랩핑 처리 (각도를 -180 ~ 180 사이로 유지)
-        if (yawAngle > 180.0) yawAngle -= 360.0;
-        else if (yawAngle < -180.0) yawAngle += 360.0;
-
+   
         String squatPosture = evaluateSquat(finalNormalized);
 
         StaticJsonDocument<700> doc;
-        JsonArray fsrArray = doc.createNestedArray("fsr_right");
-        JsonArray normArray = doc.createNestedArray("normalized_right");
-        JsonArray finalArray = doc.createNestedArray("final_normalized_right");
-        JsonArray postureArray = doc.createNestedArray("posture_right");
+        JsonArray fsrArray = doc.createNestedArray("fsr_left");
+        JsonArray normArray = doc.createNestedArray("normalized_left");
+        JsonArray finalArray = doc.createNestedArray("final_normalized_left");
+        JsonArray postureArray = doc.createNestedArray("posture_left");
 
         for (int i = 0; i < NUM_FSR; i++) {
             fsrArray.add(fsrValues[i]);
@@ -197,7 +209,7 @@ void loop() {
         pCharacteristic->setValue(jsonString.c_str());
         pCharacteristic->notify();
 
-        delay(1000);
+        delay(500);
     } else {
         delay(500);
     }
