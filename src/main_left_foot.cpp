@@ -187,13 +187,11 @@ void loop() {
 
         StaticJsonDocument<700> doc;
         JsonArray fsrArray = doc.createNestedArray("fsr_left");
-        JsonArray normArray = doc.createNestedArray("normalized_left");
         JsonArray finalArray = doc.createNestedArray("final_normalized_left");
         JsonArray postureArray = doc.createNestedArray("posture_left");
 
         for (int i = 0; i < NUM_FSR; i++) {
             fsrArray.add(fsrValues[i]);
-            normArray.add(normalizedValues[i]);
             finalArray.add(finalNormalized[i]);
             postureArray.add(postureResults[i]);
         }
