@@ -74,12 +74,12 @@ String evaluateSquat(float* norm) {
     float center = norm[3];
     float rear = norm[4];
 
-    if (rear > 0.4 && front < 0.3 && center >= 0.2 && center <= 0.4) {
+    if (rear > 0.5 && front < 0.3 && center >= 0.2 && center <= 0.4) {
         return "족압 분포가 고릅니다.";
     } else if (front >= 0.3) {
         return "앞쪽에 족압이 강합니다.";
-    } else if (rear < 0.2) {
-        return "뒤쪽 족압이 약합니다.";
+    } else if (rear > 0.6) {
+        return "뒤쪽 족압이 너무 강합니다.";
     } else {
         return "UNCLEAR";
     }
@@ -207,8 +207,8 @@ void loop() {
         pCharacteristic->setValue(jsonString.c_str());
         pCharacteristic->notify();
 
-        delay(100);
+        delay(50);
     } else {
-        delay(100);
+        delay(50);
     }
 }
