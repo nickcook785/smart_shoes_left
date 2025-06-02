@@ -31,6 +31,7 @@ BLECharacteristic* pWriteCharacteristic = nullptr;
 
 float yawAngle = 0.0;
 unsigned long prevTime = 0;
+float gyroOffset = 0.0; 
 
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) override {
@@ -45,10 +46,6 @@ class MyServerCallbacks : public BLEServerCallbacks {
     }
 };
 
-float gaussianNormalize(int x, float mu, float sigma) {
-    return exp(-pow(x - mu, 2) / (2 * pow(sigma, 2)));
-}
-
 void setupFSRPins() {
     pinMode(FSR1_PIN, INPUT);
     pinMode(FSR2_PIN, INPUT);
@@ -58,32 +55,69 @@ void setupFSRPins() {
     Serial.println("✅ FSR 센서 핀 설정 완료!");
 }
 
+
+float filteredYawRate = 0.0;
+float alpha = 0.9;  // 저역통과 필터 계수 (0.0 ~ 1.0)
+
 void calculateYawRate(float &yawRate) {
     sensors_event_t a, g, temp;
     if (mpu.getEvent(&a, &g, &temp)) {
-        yawRate = g.gyro.z * 180.0 / PI;  // rad/s → deg/s
+        // 오프셋을 뺀 raw 값 (deg/s)
+        float rawYawRate = (g.gyro.z - gyroOffset) * 180.0 / PI;
+        // 저역통과 필터
+        filteredYawRate = alpha * filteredYawRate + (1 - alpha) * rawYawRate;
+        yawRate = filteredYawRate;
+        // 죽은 구간(Deadzone) 적용: 작은 값은 0으로 처리
+        if (abs(yawRate) < 0.1) {
+            yawRate = 0.0;
+        }
     } else {
-        Serial.println("⚠️ MPU6050 데이터 읽기 실패 (센서 미연결일 수 있음)");
+        Serial.println("⚠️ MPU6050 데이터 읽기 실패");
         yawRate = 0.0;
     }
+}
+void calibrateGyro() {
+    float sum = 0.0;
+    int samples = 500;  // 자이로 오프셋 보정을 위한 샘플 수
+    Serial.println("🌀 자이로 오프셋 보정 시작...");
+
+    for (int i = 0; i < samples; i++) {
+        sensors_event_t a, g, temp;
+        if (mpu.getEvent(&a, &g, &temp)) {
+            sum += g.gyro.z;  // z축 자이로 값 누적
+        } else {
+            Serial.println("⚠️ MPU6050 데이터 읽기 실패 (센서 미연결일 수 있음)");
+            return;
+        }
+        delay(2);  // 샘플링 간격 (약 2ms)
+    }
+    gyroOffset = sum / samples;  // 평균을 오프셋으로 저장
+    Serial.print("🎯 보정된 gyroOffset: ");
+    Serial.println(gyroOffset, 6);
+}
+
+float gaussianNormalize(int x, float mu, float sigma) {
+    return exp(-pow(x - mu, 2) / (2 * pow(sigma, 2)));
 }
 
 
 String evaluateSquat(float* norm) {
-    float front = (norm[0] + norm[1] + norm[2]) / 3.0;
-    float center = norm[3];
-    float rear = norm[4];
+    float front = (norm[2] + norm[3] + norm[4]) / 3.0;
+    float center = norm[1];
+    float rear = norm[0];
 
-    if (rear > 0.4 && front < 0.3 && center >= 0.2 && center <= 0.4) {
-        return "GOOD";
+    if (rear > 0.65 && front < 0.3 && center >= 0.2 && center <= 0.4) {
+        return "족압 분포가 고릅니다.";
     } else if (front >= 0.3) {
-        return "LEANING_FORWARD";
-    } else if (rear < 0.2) {
-        return "NO_HEEL_PRESSURE";
+        return "앞쪽에 족압이 강합니다.";
+    } else if (rear > 0.65) {
+        return "뒤쪽 족압이 너무 강합니다.";
     } else {
         return "UNCLEAR";
     }
-}
+} 
+
+
 class WriteCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic) override {
         std::string value = pCharacteristic->getValue();
@@ -106,6 +140,7 @@ void setup() {
         Serial.println("❌ MPU6050 연결 실패 (연결 확인 필요)");
     } else {
         Serial.println("✅ MPU6050 초기화 완료!");
+        calibrateGyro();  // 자이로 오프셋 보정
     }
     BLEDevice::init("ESP32-S3 BLE left shoes");
     pServer = BLEDevice::createServer();
@@ -154,8 +189,8 @@ void loop() {
         fsrValues[3] = analogRead(FSR4_PIN);
         fsrValues[4] = analogRead(FSR5_PIN);
 
-        float mu = 2500.0;
-        float sigma = 800.0;
+        float mu = 1500.0;
+        float sigma = 700.0;
 
         float sumNormalized = 0.0;
         for (int i = 0; i < NUM_FSR; i++) {
@@ -207,8 +242,8 @@ void loop() {
         pCharacteristic->setValue(jsonString.c_str());
         pCharacteristic->notify();
 
-        delay(500);
+        delay(50);
     } else {
-        delay(500);
+        delay(50);
     }
 }
